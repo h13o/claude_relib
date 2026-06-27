@@ -21,13 +21,16 @@
 - 点をタップ → 総額・**㎡単価**・面積・間口・前面道路・用途地域・建ぺい/容積・取引時期、と**路線価の目安(×0.8)**
 - `?q=住所` のURLで**ダイレクトに開く**（ホーム画面ブックマーク向き）
 
-## GitHub Pages での公開
+## GitHub Pages での公開（1回だけ手動設定）
 
-このリポジトリには `.github/workflows/pages.yml` を同梱しており、`claude/rosenka-github-pages-1g8xjn` ブランチ（＝既定ブランチ）に push すると、
-リポジトリ直下の `index.html` を **GitHub Actions が自動で GitHub Pages にデプロイ**します（Pages の有効化もワークフロー側で実施）。
+`index.html` をリポジトリ**直下**に置いてあるので、GitHub Pages の「ブランチから公開」をオンにするだけで開けます。
 
-- 初回の Actions 実行が成功すると `https://h13o.github.io/claude_relib/` で開けます。
-- うまく出ない場合は **Settings → Pages → Build and deployment → Source = GitHub Actions** になっているか確認してください。
+1. **Settings → Pages → Build and deployment**
+2. **Source = Deploy from a branch**
+3. **Branch = `claude/rosenka-github-pages-1g8xjn`** ／ フォルダ **`/ (root)`** → **Save**
+4. 1〜2分待つと `https://h13o.github.io/claude_relib/` で開けます（`?q=` 付きURLも可）。
+
+> この手順だけ手動なのは、GitHub Pages の初回有効化が API トークンでは実行できない（`Resource not accessible by integration`）ためです。一度オンにすれば、以降このブランチへ push するたび自動で再公開されます。GitHub Actions 方式に切り替えたい場合は Source を **GitHub Actions** にしても構いません。
 
 ## セットアップ（5分）
 
@@ -107,7 +110,6 @@ clasp deploy                        # ウェブアプリとしてデプロイ
 | `index.html` | 地図アプリ本体（Leaflet＋地理院タイル＋不動産情報ライブラリXPT001）。設定は冒頭`CONFIG`のみ |
 | `proxy.gs` | GASプロキシ本体（キーは Script Property `REINFOLIB_API_KEY`）。CORS回避＋キー秘匿 |
 | `appsscript.json` | GASウェブアプリ設定 |
-| `.github/workflows/pages.yml` | GitHub Pages へ `index.html` を自動デプロイするワークフロー |
 
 ## 出典・ライセンス
 
