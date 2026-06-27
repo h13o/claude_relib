@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>取引価格マップ（土地・相続税路線価の当たり付け）</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+  :root { --bar: 52px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; }
+  #bar {
+    height: var(--bar); display: flex; gap: 6px; align-items: center;
+    padding: 6px 8px; background: #1f2933; color: #fff; position: relative; z-index: 1000;
+  }
+  #bar input {
+    flex: 1 1 auto; min-width: 0; height: 38px; border: 0; border-radius: 8px;
+    padding: 0 12px; font-size: 16px;
+  }
+  #bar button {
+    height: 38px; border: 0; border-radius: 8px; padding: 0 14px; font-size: 15px;
+    background: #2bb673; color: #fff; font-weight: 600;
+  }
+  #map { position: absolute; top: var(--bar); left: 0; right: 0; bottom: 0; }
+  .leaflet-popup-content { font-size: 13px; line-height: 1.5; margin: 10px 12px; }
+  .pp-price { font-size: 16px; font-weight: 700; color: #c0392b; }
+  .pp-unit { font-size: 14px; font-weight: 700; color: #b9770e; }
+  .pp-row { color: #333; }
+  .pp-meta { color: #667; font-size: 12px; }
+  .pp-links { margin-top: 8px; }
+  .pp-links a { color: #1565c0; text-decoration: none; }
+  #toast {
+    position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--bar) + 10px);
+    z-index: 1200; background: rgba(192,57,43,.96); color: #fff; padding: 8px 14px;
+    border-radius: 8px; font-size: 13px; max-width: 90%; display: none; box-shadow: 0 2px 10px rgba(0,0,0,.3);
+  }
+  #legend {
+    position: absolute; right: 8px; bottom: 18px; z-index: 1100; background: rgba(255,255,255,.92);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #333; box-shadow: 0 1px 6px rgba(0,0,0,.25);
+    max-width: 230px;
+  }
+  #legend b { color: #1f2933; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+  #legend a { color: #1565c0; }
+  .ctl-link { font-size: 12px; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <input id="q" type="search" placeholder="住所・地名・駅名（例: 千葉市中央区 / 川崎駅）" enterkeyhint="search" />
+    <button id="go">検索</button>
+  </div>
+  <div id="map"></div>
+  <div id="toast"></div>
+  <div id="legend">
+    <div><b>取引価格（不動産情報ライブラリ）</b></div>
+    <div><span class="swatch" style="background:#c0392b"></span>宅地（土地）<span class="swatch" style="background:#2980b9;margin-left:8px"></span>土地＋建物</div>
+    <div class="pp-meta">点は<b>最寄り駅</b>に集約表示。相続税路線価そのものではなく相場の当たり付け用。</div>
+    <div class="pp-links ctl-link" id="ext-links"></div>
+  </div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+/* ============================================================
+ *  設定（ここだけ編集すればOK）
+ * ============================================================
+ *  API_KEY : 不動産情報ライブラリ で発行した Subscription Key を貼る。
+ *            ブラウザに直接書くため、自分専用ページとして使うこと（公開リポジトリに本物のキーを置かない）。
+ *  PROXY   : ブラウザのCORSで弾かれる場合に、ヘッダを付けて中継するプロキシのURL接頭辞。
+ *            例: "https://script.google.com/macros/s/XXX/exec?url="
+ *            空("")なら、APIへ直接 fetch（ヘッダ付き）する。詳しくは README.md。
+ */
+const CONFIG = {
+  API_KEY: "",                 // プロキシ経由のため未使用（キーはGASのScript Property側）
+  PROXY:   "https://script.google.com/macros/s/AKfycbyY2UDv57wz6oizMPnNazQvTuMMBp0FyZt81ak8RCqOGXpOlqpacXF7IwimJN8T5g1W/exec?url=", // GASプロキシ（キーはGAS内）
+  FROM:    "20231",            // 取引時期From  YYYYN（N=四半期1〜4）
+  TO:      "20264",            // 取引時期To
+  LAND_TYPES: "01,02",         // 01=宅地(土地) 02=宅地(土地と建物) 07=中古マンション 10=農地 11=林地
+  DEFAULT_CENTER: [35.6586, 139.7454], // 初期位置（東京タワー付近）
+  DEFAULT_ZOOM: 14,
+  DATA_MIN_ZOOM: 13,           // この地図ズーム未満では取引点を取りに行かない（広域すぎ防止）
+  MAX_TILES: 12                // 1回の取得で読むタイル上限（超えたら中心付近のみ）
+};
+
+/* ---- 地図の初期化（地理院地図ベース） ---- */
+const map = L.map('map', { zoomControl: true, attributionControl: true })
+  .setView(CONFIG.DEFAULT_CENTER, CONFIG.DEFAULT_ZOOM);
+
+L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+  maxZoom: 18, minZoom: 8,
+  attribution: '地図：<a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a> / 取引価格：<a href="https://www.reinfolib.mlit.go.jp/">国土交通省 不動産情報ライブラリ</a>'
+}).addTo(map);
+
+const layer = L.layerGroup().addTo(map);
+
+/* ---- ユーティリティ ---- */
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(() => { t.style.display = 'none'; }, 6000);
+}
+// "4,000万円" → 40000000（円）。"17,000万円" → 170000000。
+function parseYen(s) {
+  if (!s) return null;
+  const m = String(s).replace(/,/g, '');
+  const man = m.match(/([\d.]+)\s*万円/);
+  if (man) return Math.round(parseFloat(man[1]) * 10000);
+  const en = m.match(/([\d.]+)\s*円/);
+  if (en) return Math.round(parseFloat(en[1]));
+  const num = m.match(/^[\d.]+$/);
+  return num ? Math.round(parseFloat(m)) : null;
+}
+// "90㎡" → 90
+function parseArea(s) {
+  if (!s) return null;
+  const m = String(s).replace(/,/g, '').match(/([\d.]+)/);
+  return m ? parseFloat(m[1]) : null;
+}
+function fmtMan(yen) {
+  if (yen == null) return '—';
+  return (yen / 10000).toLocaleString('ja-JP', { maximumFractionDigits: 0 }) + '万円';
+}
+function fmtPerSqm(yen) {
+  if (yen == null) return '—';
+  return Math.round(yen).toLocaleString('ja-JP') + '円/㎡';
+}
+
+/* ---- XYZタイル計算（Webメルカトル, 地理院/標準と同一） ---- */
+function lon2tile(lon, z) { return Math.floor((lon + 180) / 360 * Math.pow(2, z)); }
+function lat2tile(lat, z) {
+  const r = lat * Math.PI / 180;
+  return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z));
+}
+
+/* ---- APIタイル1枚を取得 ---- */
+async function fetchTile(z, x, y) {
+  const params = new URLSearchParams({
+    response_format: 'geojson', z, x, y, from: CONFIG.FROM, to: CONFIG.TO
+  });
+  if (CONFIG.LAND_TYPES) params.set('landTypeCode', CONFIG.LAND_TYPES);
+  const apiUrl = 'https://www.reinfolib.mlit.go.jp/ex-api/external/XPT001?' + params.toString();
+
+  let res;
+  if (CONFIG.PROXY) {
+    // プロキシ経由（プロキシ側でヘッダ付与・CORS解決する想定）
+    res = await fetch(CONFIG.PROXY + encodeURIComponent(apiUrl));
+  } else {
+    res = await fetch(apiUrl, { headers: { 'Ocp-Apim-Subscription-Key': CONFIG.API_KEY } });
+  }
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) throw new Error('AUTH');
+    throw new Error('HTTP ' + res.status);
+  }
+  const json = await res.json();
+  return (json && json.features) ? json.features : [];
+}
+
+/* ---- 現在の表示範囲の取引点を描画 ---- */
+let reqToken = 0;
+async function refresh() {
+  if (!CONFIG.API_KEY && !CONFIG.PROXY) {
+    toast('APIキー未設定です。index.html の CONFIG.API_KEY に貼ってください（README参照）。');
+    return;
+  }
+  const z = map.getZoom();
+  if (z < CONFIG.DATA_MIN_ZOOM) { layer.clearLayers(); toast('もう少し拡大すると取引価格が表示されます'); return; }
+
+  const dataZoom = Math.min(15, Math.max(11, z)); // APIは11〜15
+  const b = map.getBounds();
+  let x0 = lon2tile(b.getWest(), dataZoom), x1 = lon2tile(b.getEast(), dataZoom);
+  let y0 = lat2tile(b.getNorth(), dataZoom), y1 = lat2tile(b.getSouth(), dataZoom);
+  const tiles = [];
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) tiles.push([x, y]);
+
+  let limited = false;
+  if (tiles.length > CONFIG.MAX_TILES) {
+    limited = true;
+    const cx = lon2tile(map.getCenter().lng, dataZoom), cy = lat2tile(map.getCenter().lat, dataZoom);
+    tiles.sort((a, b2) => (Math.abs(a[0]-cx)+Math.abs(a[1]-cy)) - (Math.abs(b2[0]-cx)+Math.abs(b2[1]-cy)));
+    tiles.length = CONFIG.MAX_TILES;
+  }
+
+  const token = ++reqToken;
+  let feats = [];
+  try {
+    const results = await Promise.all(tiles.map(([x, y]) => fetchTile(dataZoom, x, y).catch(e => { throw e; })));
+    if (token !== reqToken) return; // 新しい操作が来たら破棄
+    feats = results.flat();
+  } catch (e) {
+    if (e.message === 'AUTH') toast('APIキーが無効か未承認です（401/403）。キーと利用申請を確認してください。');
+    else if (e.message && e.message.startsWith('HTTP')) toast('取得失敗：' + e.message);
+    else toast('取得に失敗しました。CORSの可能性があります→READMEのプロキシ設定をご検討ください。');
+    return;
+  }
+
+  render(feats);
+  if (limited) toast('範囲が広いため中心付近のみ表示しています。拡大すると周辺も表示されます。');
+}
+
+function colorFor(landType) {
+  return (landType && landType.indexOf('土地と建物') >= 0) ? '#2980b9' : '#c0392b';
+}
+
+function render(features) {
+  layer.clearLayers();
+  // 同一座標に多数集まるので、わずかに散らして重なりを緩和
+  const seen = {};
+  features.forEach(f => {
+    if (!f.geometry || f.geometry.type !== 'Point') return;
+    const [lng, lat] = f.geometry.coordinates;
+    const p = f.properties || {};
+    const key = lat.toFixed(5) + ',' + lng.toFixed(5);
+    const n = (seen[key] = (seen[key] || 0) + 1);
+    const jitter = (n - 1) * 0.00018;
+    const ang = (n * 2.39996);
+    const dlat = jitter * Math.cos(ang), dlng = jitter * Math.sin(ang);
+
+    const total = parseYen(p.u_transaction_price_total_ja);
+    const area = parseArea(p.u_area_ja);
+    let perSqm = parseYen(p.u_transaction_price_unit_price_square_meter_ja);
+    if (perSqm == null && total != null && area) perSqm = total / area;
+
+    const isLandOnly = (p.land_type_name_ja || '').indexOf('土地と建物') < 0;
+    const m = L.circleMarker([lat + dlat, lng + dlng], {
+      radius: 6, weight: 1, color: '#fff', fillColor: colorFor(p.land_type_name_ja), fillOpacity: 0.9
+    });
+
+    const rosenkaHint = perSqm != null
+      ? `<div class="pp-meta">相続税路線価の目安 ≒ ${fmtPerSqm(perSqm * 0.8)}（取引相場の8割を仮置き）</div>` : '';
+
+    m.bindPopup(
+      `<div class="pp-price">${p.u_transaction_price_total_ja || '価格非公開'}</div>` +
+      (perSqm != null ? `<div class="pp-unit">${fmtPerSqm(perSqm)}${isLandOnly ? '（土地）' : '（土地+建物）'}</div>` : '') +
+      `<div class="pp-row">${p.land_type_name_ja || ''} ／ 面積 ${p.u_area_ja || '—'}</div>` +
+      (p.u_land_frontage_ja ? `<div class="pp-row">間口 ${p.u_land_frontage_ja}${p.u_front_road_width_ja ? ' ／ 前面道路 ' + p.u_front_road_width_ja : ''}</div>` : '') +
+      (p.land_use_name_ja ? `<div class="pp-row">用途地域 ${p.land_use_name_ja}${p.u_building_coverage_ratio_ja ? ' ／ 建ぺい ' + p.u_building_coverage_ratio_ja : ''}${p.u_floor_area_ratio_ja ? ' ／ 容積 ' + p.u_floor_area_ratio_ja : ''}</div>` : '') +
+      `<div class="pp-meta">${p.prefecture_name_ja || ''}${p.city_name_ja || ''}${p.district_name_ja || ''} ／ ${p.point_in_time_name_ja || ''} ／ ${p.price_information_category_name_ja || ''}</div>` +
+      rosenkaHint
+    );
+    m.addTo(layer);
+  });
+  updateExtLinks();
+}
+
+/* ---- 外部リンク（正確な路線価が要るとき用） ---- */
+function updateExtLinks() {
+  const c = map.getCenter();
+  const el = document.getElementById('ext-links');
+  el.innerHTML =
+    `<a href="https://www.rosenka.nta.go.jp/" target="_blank" rel="noopener">国税庁 路線価図</a> ／ ` +
+    `<a href="https://www.chikamap.jp/chikamap-sp/" target="_blank" rel="noopener">全国地価マップ(SP)</a> ／ ` +
+    `<a href="https://maps.google.com/?q=${c.lat.toFixed(6)},${c.lng.toFixed(6)}" target="_blank" rel="noopener">Googleマップ</a>`;
+}
+
+/* ---- 住所→緯度経度（国土地理院ジオコーダ：CORS可・キー不要） ---- */
+async function geocode(q) {
+  const url = 'https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(q);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('geocode');
+  const arr = await res.json();
+  if (!arr.length) return null;
+  const [lng, lat] = arr[0].geometry.coordinates; // [lng, lat]
+  return { lat, lng, title: arr[0].properties && arr[0].properties.title };
+}
+async function searchAddress(q, zoom) {
+  if (!q) return;
+  try {
+    const hit = await geocode(q);
+    if (!hit) { toast('住所が見つかりませんでした'); return; }
+    map.setView([hit.lat, hit.lng], zoom || Math.max(map.getZoom(), 15));
+  } catch (e) { toast('住所検索に失敗しました'); }
+}
+
+/* ---- イベント ---- */
+document.getElementById('go').addEventListener('click', () => searchAddress(document.getElementById('q').value));
+document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') searchAddress(e.target.value); });
+
+let moveTimer = null;
+map.on('moveend', () => { clearTimeout(moveTimer); moveTimer = setTimeout(refresh, 350); });
+
+/* ---- URLパラメータでディープリンク：?q=住所  または ?lat=&lng=&z= ---- */
+(function initFromURL() {
+  const u = new URLSearchParams(location.search);
+  const q = u.get('q');
+  const lat = parseFloat(u.get('lat')), lng = parseFloat(u.get('lng'));
+  const z = parseInt(u.get('z'), 10);
+  if (!isNaN(lat) && !isNaN(lng)) {
+    map.setView([lat, lng], isNaN(z) ? 15 : z);
+  } else if (q) {
+    document.getElementById('q').value = q;
+    searchAddress(q, isNaN(z) ? 15 : z);
+  } else {
+    updateExtLinks();
+    refresh();
+  }
+})();
+</script>
+</body>
+</html>
