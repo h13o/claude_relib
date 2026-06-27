@@ -2,299 +2,383 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>取引価格マップ（土地・相続税路線価の当たり付け）</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>最寄駅の土地取引価格（表＋散布図）</title>
 <style>
-  :root { --bar: 52px; }
+  :root { --accent:#2bb673; --bar:#1f2933; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; }
-  #bar {
-    height: var(--bar); display: flex; gap: 6px; align-items: center;
-    padding: 6px 8px; background: #1f2933; color: #fff; position: relative; z-index: 1000;
-  }
-  #bar input {
-    flex: 1 1 auto; min-width: 0; height: 38px; border: 0; border-radius: 8px;
-    padding: 0 12px; font-size: 16px;
-  }
-  #bar button {
-    height: 38px; border: 0; border-radius: 8px; padding: 0 14px; font-size: 15px;
-    background: #2bb673; color: #fff; font-weight: 600;
-  }
-  #map { position: absolute; top: var(--bar); left: 0; right: 0; bottom: 0; }
-  .leaflet-popup-content { font-size: 13px; line-height: 1.5; margin: 10px 12px; }
-  .pp-price { font-size: 16px; font-weight: 700; color: #c0392b; }
-  .pp-unit { font-size: 14px; font-weight: 700; color: #b9770e; }
-  .pp-row { color: #333; }
-  .pp-meta { color: #667; font-size: 12px; }
-  .pp-links { margin-top: 8px; }
-  .pp-links a { color: #1565c0; text-decoration: none; }
-  #toast {
-    position: absolute; left: 50%; transform: translateX(-50%); top: calc(var(--bar) + 10px);
-    z-index: 1200; background: rgba(192,57,43,.96); color: #fff; padding: 8px 14px;
-    border-radius: 8px; font-size: 13px; max-width: 90%; display: none; box-shadow: 0 2px 10px rgba(0,0,0,.3);
-  }
-  #legend {
-    position: absolute; right: 8px; bottom: 18px; z-index: 1100; background: rgba(255,255,255,.92);
-    border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #333; box-shadow: 0 1px 6px rgba(0,0,0,.25);
-    max-width: 230px;
-  }
-  #legend b { color: #1f2933; }
-  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
-  #legend a { color: #1565c0; }
-  .ctl-link { font-size: 12px; }
+  html, body { margin:0; font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; color:#222; background:#f5f6f8; }
+  header { position:sticky; top:0; z-index:10; background:var(--bar); color:#fff; padding:8px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  header input[type=search] { flex:1 1 220px; min-width:0; height:38px; border:0; border-radius:8px; padding:0 12px; font-size:16px; }
+  header button { height:38px; border:0; border-radius:8px; padding:0 14px; font-size:15px; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; }
+  header select { height:38px; border:0; border-radius:8px; padding:0 8px; font-size:14px; }
+  .wrap { max-width:1040px; margin:0 auto; padding:12px; }
+  .meta { color:#555; font-size:13px; margin:6px 2px 10px; }
+  .charts { display:flex; flex-wrap:wrap; gap:12px; }
+  .card { background:#fff; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.1); padding:10px 12px; flex:1 1 420px; min-width:300px; }
+  .card h3 { margin:2px 0 6px; font-size:14px; }
+  svg { width:100%; height:auto; display:block; }
+  .grid { stroke:#eee; stroke-width:1; }
+  .axis { stroke:#bbb; stroke-width:1; }
+  .tick { font-size:10px; fill:#777; }
+  .dot { fill:#c0392b; fill-opacity:.55; stroke:#fff; stroke-width:.5; }
+  table { width:100%; border-collapse:collapse; background:#fff; font-size:13px; }
+  th, td { padding:6px 8px; text-align:right; white-space:nowrap; border-bottom:1px solid #eee; }
+  th { background:#eef1f4; position:sticky; top:0; z-index:1; }
+  td.l, th.l { text-align:left; }
+  tbody tr:hover { background:#fafbfc; }
+  .tablewrap { overflow:auto; max-height:72vh; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.1); margin-top:12px; }
+  #toast { position:fixed; left:50%; transform:translateX(-50%); top:60px; background:rgba(31,41,51,.96); color:#fff; padding:8px 14px; border-radius:8px; font-size:13px; display:none; z-index:50; max-width:90%; }
+  .empty { color:#888; padding:24px; text-align:center; font-size:13px; }
+  .note { font-size:12px; color:#8a6d3b; background:#fcf8e3; border-radius:6px; padding:6px 8px; margin-top:6px; }
+  .links { font-size:12px; margin:12px 2px; color:#666; }
+  .links a { color:#1565c0; text-decoration:none; }
 </style>
 </head>
 <body>
-  <div id="bar">
-    <input id="q" type="search" placeholder="住所・地名・駅名（例: 千葉市中央区 / 川崎駅）" enterkeyhint="search" />
-    <button id="go">検索</button>
+<header>
+  <input id="q" type="search" placeholder="駅名・住所（例: 川崎駅 / 千葉市中央区）" enterkeyhint="search" />
+  <button id="go">検索</button>
+  <select id="station" title="最寄駅を切り替え"></select>
+  <select id="ymetric" title="縦軸の指標">
+    <option value="total">縦軸: 総額</option>
+    <option value="unit">縦軸: ㎡単価</option>
+  </select>
+</header>
+<div id="toast"></div>
+<div class="wrap">
+  <div class="meta" id="summary">駅名や住所で検索すると、最寄駅の<b>宅地（土地）取引</b>を新しい順に表示します（過去3年）。</div>
+  <div class="charts">
+    <div class="card"><h3>取引年次 × 価格</h3><div id="chartTime"><div class="empty">未検索</div></div></div>
+    <div class="card"><h3>駅徒歩(分) × 価格</h3><div id="chartWalk"><div class="empty">未検索</div></div></div>
   </div>
-  <div id="map"></div>
-  <div id="toast"></div>
-  <div id="legend">
-    <div><b>取引価格（不動産情報ライブラリ）</b></div>
-    <div><span class="swatch" style="background:#c0392b"></span>宅地（土地）の取引</div>
-    <div class="pp-meta">点は番地ではなく<b>代表点（駅/地区）</b>に丸めて表示。重なり回避で微小に散らしています。相続税路線価そのものではなく相場の当たり付け用。</div>
-    <div class="pp-links ctl-link" id="ext-links"></div>
-  </div>
+  <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  <div class="links" id="extlinks"></div>
+</div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 /* ============================================================
  *  設定（ここだけ編集すればOK）
- * ============================================================
- *  API_KEY : 不動産情報ライブラリ で発行した Subscription Key を貼る。
- *            ブラウザに直接書くため、自分専用ページとして使うこと（公開リポジトリに本物のキーを置かない）。
- *  PROXY   : ブラウザのCORSで弾かれる場合に、ヘッダを付けて中継するプロキシのURL接頭辞。
- *            例: "https://script.google.com/macros/s/XXX/exec?url="
- *            空("")なら、APIへ直接 fetch（ヘッダ付き）する。詳しくは README.md。
- */
+ *  PROXY : GASプロキシURL（末尾 ?url= まで）。キーはGAS側Script Property。
+ *          空にして API_KEY を入れれば直接fetch（CORSで弾かれる場合あり）。
+ * ============================================================ */
 const CONFIG = {
-  API_KEY: "",                 // プロキシ経由のため未使用（キーはGASのScript Property側）
-  PROXY:   "https://script.google.com/macros/s/AKfycbyY2UDv57wz6oizMPnNazQvTuMMBp0FyZt81ak8RCqOGXpOlqpacXF7IwimJN8T5g1W/exec?url=", // GASプロキシ（キーはGAS内）
-  FROM:    "20231",            // 取引時期From  YYYYN（N=四半期1〜4）
-  TO:      "20264",            // 取引時期To
-  LAND_TYPES: "01",            // 01=宅地(土地)のみ。02=宅地(土地と建物) 07=中古マンション 10=農地 11=林地
-  DEFAULT_CENTER: [35.6586, 139.7454], // 初期位置（東京タワー付近）
-  DEFAULT_ZOOM: 14,
-  DATA_MIN_ZOOM: 13,           // この地図ズーム未満では取引点を取りに行かない（広域すぎ防止）
-  MAX_TILES: 12                // 1回の取得で読むタイル上限（超えたら中心付近のみ）
+  API_KEY: "",
+  PROXY:   "https://script.google.com/macros/s/AKfycbyY2UDv57wz6oizMPnNazQvTuMMBp0FyZt81ak8RCqOGXpOlqpacXF7IwimJN8T5g1W/exec?url=",
+  LAND_TYPES: "01",     // 01=宅地(土地)のみ
+  YEARS_BACK: 3,        // 過去何年分を表示するか
+  DATA_ZOOM: 13,        // 取得タイルのズーム（APIは11〜15）
+  TILE_RADIUS: 1        // 中心タイルの周囲±N枚（1=3x3=9枚）
 };
 
-/* ---- 地図の初期化（地理院地図ベース） ---- */
-const map = L.map('map', { zoomControl: true, attributionControl: true })
-  .setView(CONFIG.DEFAULT_CENTER, CONFIG.DEFAULT_ZOOM);
+/* ---- 取引時期（四半期）ユーティリティ ---- */
+function qIndex(y, q) { return y * 4 + (q - 1); }
+const _now = new Date();
+const CUR = { y: _now.getFullYear(), q: Math.floor(_now.getMonth() / 3) + 1 };
+const FROM = `${CUR.y - CONFIG.YEARS_BACK}${CUR.q}`;
+const TO   = `${CUR.y}${CUR.q}`;
+const MIN_QI = qIndex(CUR.y - CONFIG.YEARS_BACK, CUR.q); // これ以上新しいものだけ表示
 
-L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
-  maxZoom: 18, minZoom: 8,
-  attribution: '地図：<a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a> / 取引価格：<a href="https://www.reinfolib.mlit.go.jp/">国土交通省 不動産情報ライブラリ</a>'
-}).addTo(map);
-
-const layer = L.layerGroup().addTo(map);
-
-/* ---- ユーティリティ ---- */
-function toast(msg) {
+/* ---- パース/整形 ---- */
+function toast(msg, ms) {
   const t = document.getElementById('toast');
+  if (!msg) { t.style.display = 'none'; return; }
   t.textContent = msg; t.style.display = 'block';
-  clearTimeout(toast._t); toast._t = setTimeout(() => { t.style.display = 'none'; }, 6000);
+  clearTimeout(toast._t); if (ms !== 0) toast._t = setTimeout(() => t.style.display = 'none', ms || 5000);
 }
-// "4,000万円" → 40000000（円）。"17,000万円" → 170000000。
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
 function parseYen(s) {
-  if (!s) return null;
+  if (s == null) return null;
   const m = String(s).replace(/,/g, '');
-  const man = m.match(/([\d.]+)\s*万円/);
-  if (man) return Math.round(parseFloat(man[1]) * 10000);
-  const en = m.match(/([\d.]+)\s*円/);
-  if (en) return Math.round(parseFloat(en[1]));
-  const num = m.match(/^[\d.]+$/);
-  return num ? Math.round(parseFloat(m)) : null;
+  const man = m.match(/([\d.]+)\s*万円/); if (man) return Math.round(parseFloat(man[1]) * 10000);
+  const en = m.match(/([\d.]+)\s*円/);   if (en)  return Math.round(parseFloat(en[1]));
+  const num = m.match(/^[\d.]+$/);        return num ? Math.round(parseFloat(m)) : null;
 }
-// "90㎡" → 90
-function parseArea(s) {
-  if (!s) return null;
-  const m = String(s).replace(/,/g, '').match(/([\d.]+)/);
-  return m ? parseFloat(m[1]) : null;
-}
+function parseArea(s) { if (s == null) return null; const m = String(s).replace(/,/g, '').match(/([\d.]+)/); return m ? parseFloat(m[1]) : null; }
 function fmtMan(yen) {
   if (yen == null) return '—';
-  return (yen / 10000).toLocaleString('ja-JP', { maximumFractionDigits: 0 }) + '万円';
+  if (yen >= 1e8) return (yen / 1e8).toLocaleString('ja-JP', { maximumFractionDigits: 2 }) + '億円';
+  return Math.round(yen / 1e4).toLocaleString('ja-JP') + '万円';
 }
-function fmtPerSqm(yen) {
-  if (yen == null) return '—';
-  return Math.round(yen).toLocaleString('ja-JP') + '円/㎡';
+function fmtPerSqm(yen) { return yen == null ? '—' : Math.round(yen).toLocaleString('ja-JP') + '円/㎡'; }
+function parsePIT(s) { if (!s) return null; const m = String(s).match(/(\d{4})年第([1-4])四半期/); return m ? { y: +m[1], q: +m[2] } : null; }
+
+/* ---- 最寄駅名・徒歩分数（フィールド名が不明でも拾えるよう防御的に） ---- */
+function stationName(p) {
+  for (const k of ['nearest_station_name_ja', 'station_name_ja']) if (p[k]) return String(p[k]);
+  for (const k in p) if (/station.*name|nearest.*station/i.test(k) && p[k]) return String(p[k]);
+  return '';
+}
+function walkMinutes(p) {
+  let v = null;
+  for (const k of ['nearest_station_distance_minutes_ja', 'station_distance_minutes_ja', 'u_nearest_station_distance_minutes_ja']) {
+    if (p[k] != null && p[k] !== '') { v = p[k]; break; }
+  }
+  if (v == null) for (const k in p) {
+    if (/station/i.test(k) && /(minute|distance|time|徒歩|分)/i.test(k) && p[k] != null && p[k] !== '') { v = p[k]; break; }
+  }
+  if (v == null) return null;
+  const s = String(v);
+  const hm = s.match(/(\d+)\s*[Hh時]\s*(\d+)?/); if (hm) return (+hm[1]) * 60 + (hm[2] ? +hm[2] : 0);
+  const mm = s.match(/(\d+)/); return mm ? +mm[1] : null;
 }
 
-/* ---- XYZタイル計算（Webメルカトル, 地理院/標準と同一） ---- */
+/* ---- XYZタイル計算（Webメルカトル） ---- */
 function lon2tile(lon, z) { return Math.floor((lon + 180) / 360 * Math.pow(2, z)); }
-function lat2tile(lat, z) {
-  const r = lat * Math.PI / 180;
-  return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z));
-}
+function lat2tile(lat, z) { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z)); }
 
 /* ---- APIタイル1枚を取得 ---- */
 async function fetchTile(z, x, y) {
-  const params = new URLSearchParams({
-    response_format: 'geojson', z, x, y, from: CONFIG.FROM, to: CONFIG.TO
-  });
+  const params = new URLSearchParams({ response_format: 'geojson', z, x, y, from: FROM, to: TO });
   if (CONFIG.LAND_TYPES) params.set('landTypeCode', CONFIG.LAND_TYPES);
   const apiUrl = 'https://www.reinfolib.mlit.go.jp/ex-api/external/XPT001?' + params.toString();
-
   let res;
-  if (CONFIG.PROXY) {
-    // プロキシ経由（プロキシ側でヘッダ付与・CORS解決する想定）
-    res = await fetch(CONFIG.PROXY + encodeURIComponent(apiUrl));
-  } else {
-    res = await fetch(apiUrl, { headers: { 'Ocp-Apim-Subscription-Key': CONFIG.API_KEY } });
-  }
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) throw new Error('AUTH');
-    throw new Error('HTTP ' + res.status);
-  }
+  if (CONFIG.PROXY) res = await fetch(CONFIG.PROXY + encodeURIComponent(apiUrl));
+  else res = await fetch(apiUrl, { headers: { 'Ocp-Apim-Subscription-Key': CONFIG.API_KEY } });
+  if (!res.ok) { if (res.status === 401 || res.status === 403) throw new Error('AUTH'); throw new Error('HTTP ' + res.status); }
   const json = await res.json();
   return (json && json.features) ? json.features : [];
 }
 
-/* ---- 現在の表示範囲の取引点を描画 ---- */
-let reqToken = 0;
-async function refresh() {
-  if (!CONFIG.API_KEY && !CONFIG.PROXY) {
-    toast('APIキー未設定です。index.html の CONFIG.API_KEY に貼ってください（README参照）。');
-    return;
-  }
-  const z = map.getZoom();
-  if (z < CONFIG.DATA_MIN_ZOOM) { layer.clearLayers(); toast('もう少し拡大すると取引価格が表示されます'); return; }
+/* ---- レコード化 ---- */
+function toRecord(f) {
+  if (!f.geometry || f.geometry.type !== 'Point') return null;
+  const [lng, lat] = f.geometry.coordinates;
+  const p = f.properties || {};
+  const pit = parsePIT(p.point_in_time_name_ja);
+  const total = parseYen(p.u_transaction_price_total_ja);
+  const area = parseArea(p.u_area_ja);
+  let unit = parseYen(p.u_transaction_price_unit_price_square_meter_ja);
+  if (unit == null && total != null && area) unit = total / area;
+  return {
+    lat, lng, p,
+    station: stationName(p), walk: walkMinutes(p),
+    pit, qi: pit ? qIndex(pit.y, pit.q) : -1, pitName: p.point_in_time_name_ja || '',
+    total, area, unit,
+    frontage: p.u_land_frontage_ja || '', road: p.u_front_road_width_ja || '',
+    use: p.land_use_name_ja || '', bcr: p.u_building_coverage_ratio_ja || '', far: p.u_floor_area_ratio_ja || '',
+    city: p.city_name_ja || '', dist: p.district_name_ja || ''
+  };
+}
 
-  const dataZoom = Math.min(15, Math.max(11, z)); // APIは11〜15
-  const b = map.getBounds();
-  let x0 = lon2tile(b.getWest(), dataZoom), x1 = lon2tile(b.getEast(), dataZoom);
-  let y0 = lat2tile(b.getNorth(), dataZoom), y1 = lat2tile(b.getSouth(), dataZoom);
+/* ---- データ取得 ---- */
+let ALL = [], CENTER = null, reqToken = 0;
+async function loadAround(lat, lng) {
+  CENTER = { lat, lng };
+  const z = CONFIG.DATA_ZOOM, cx = lon2tile(lng, z), cy = lat2tile(lat, z), r = CONFIG.TILE_RADIUS;
   const tiles = [];
-  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) tiles.push([x, y]);
-
-  let limited = false;
-  if (tiles.length > CONFIG.MAX_TILES) {
-    limited = true;
-    const cx = lon2tile(map.getCenter().lng, dataZoom), cy = lat2tile(map.getCenter().lat, dataZoom);
-    tiles.sort((a, b2) => (Math.abs(a[0]-cx)+Math.abs(a[1]-cy)) - (Math.abs(b2[0]-cx)+Math.abs(b2[1]-cy)));
-    tiles.length = CONFIG.MAX_TILES;
-  }
-
+  for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) tiles.push([cx + dx, cy + dy]);
+  toast('取得中…', 0);
   const token = ++reqToken;
   let feats = [];
   try {
-    const results = await Promise.all(tiles.map(([x, y]) => fetchTile(dataZoom, x, y).catch(e => { throw e; })));
-    if (token !== reqToken) return; // 新しい操作が来たら破棄
+    const results = await Promise.all(tiles.map(([x, y]) => fetchTile(z, x, y)));
+    if (token !== reqToken) return;
     feats = results.flat();
   } catch (e) {
-    if (e.message === 'AUTH') toast('APIキーが無効か未承認です（401/403）。キーと利用申請を確認してください。');
+    if (e.message === 'AUTH') toast('APIキーが無効/未承認です（401/403）。');
     else if (e.message && e.message.startsWith('HTTP')) toast('取得失敗：' + e.message);
-    else toast('取得に失敗しました。CORSの可能性があります→READMEのプロキシ設定をご検討ください。');
+    else toast('取得に失敗しました（CORSの可能性→READMEのプロキシ設定）。');
     return;
   }
-
-  render(feats);
-  if (limited) toast('範囲が広いため中心付近のみ表示しています。拡大すると周辺も表示されます。');
+  toast('');
+  ALL = feats.map(toRecord).filter(Boolean);
+  buildStationList();
+  render();
 }
 
-function colorFor(landType) {
-  return (landType && landType.indexOf('土地と建物') >= 0) ? '#2980b9' : '#c0392b';
+/* ---- 近さ（簡易・度の二乗。経度は緯度補正） ---- */
+function dist2(r) {
+  const dy = r.lat - CENTER.lat, dx = (r.lng - CENTER.lng) * Math.cos(CENTER.lat * Math.PI / 180);
+  return dx * dx + dy * dy;
+}
+function buildStationList() {
+  const info = {};
+  ALL.forEach(r => { if (!r.station) return; const d = dist2(r); if (!(r.station in info)) info[r.station] = { d, count: 0 }; else if (d < info[r.station].d) info[r.station].d = d; });
+  ALL.forEach(r => { if (r.station && info[r.station]) info[r.station].count++; });
+  const stations = Object.keys(info).sort((a, b) => info[a].d - info[b].d);
+  const sel = document.getElementById('station');
+  const prev = sel.value;
+  sel.innerHTML = '';
+  if (!stations.length) { const o = document.createElement('option'); o.value = ''; o.textContent = '(駅情報なし → 周辺すべて)'; sel.appendChild(o); return; }
+  stations.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = `${s}（${info[s].count}件）`; sel.appendChild(o); });
+  sel.value = stations.includes(prev) ? prev : stations[0];
 }
 
-function render(features) {
-  layer.clearLayers();
-  // 同一座標に多数集まるので、わずかに散らして重なりを緩和
-  const seen = {};
-  features.forEach(f => {
-    if (!f.geometry || f.geometry.type !== 'Point') return;
-    const [lng, lat] = f.geometry.coordinates;
-    const p = f.properties || {};
-    const key = lat.toFixed(5) + ',' + lng.toFixed(5);
-    const n = (seen[key] = (seen[key] || 0) + 1);
-    const jitter = (n - 1) * 0.00018;
-    const ang = (n * 2.39996);
-    const dlat = jitter * Math.cos(ang), dlng = jitter * Math.sin(ang);
+/* ---- 選択中レコード（過去3年・新しい順） ---- */
+function selectedRecords() {
+  const st = document.getElementById('station').value;
+  let recs = ALL.slice();
+  if (st) recs = recs.filter(r => r.station === st);
+  recs = recs.filter(r => r.qi >= 0 && r.qi >= MIN_QI);
+  recs.sort((a, b) => (b.qi - a.qi) || ((b.total || 0) - (a.total || 0)));
+  return recs;
+}
 
-    const total = parseYen(p.u_transaction_price_total_ja);
-    const area = parseArea(p.u_area_ja);
-    let perSqm = parseYen(p.u_transaction_price_unit_price_square_meter_ja);
-    if (perSqm == null && total != null && area) perSqm = total / area;
+/* ====================  描画  ==================== */
+function render() {
+  if (!CENTER) return;
+  const recs = selectedRecords();
+  renderSummary(recs);
+  renderCharts(recs);
+  renderTable(recs);
+  renderLinks();
+}
+function renderSummary(recs) {
+  const st = document.getElementById('station').value || '周辺';
+  document.getElementById('summary').innerHTML =
+    `<b>${esc(st)}</b> の宅地（土地）取引 <b>${recs.length}</b> 件 ／ 取引時期 ${FROM}〜${TO}（過去${CONFIG.YEARS_BACK}年）・新しい順`
+    + `<span class="note" style="display:inline-block">※点は番地ではなく代表点（駅/地区）に丸めた値。相続税路線価そのものではなく相場の当たり付けです。</span>`;
+}
 
-    const isLandOnly = (p.land_type_name_ja || '').indexOf('土地と建物') < 0;
-    const m = L.circleMarker([lat + dlat, lng + dlng], {
-      radius: 6, weight: 1, color: '#fff', fillColor: colorFor(p.land_type_name_ja), fillOpacity: 0.9
-    });
+function yValOf(r, metric) { return metric === 'unit' ? r.unit : r.total; }
+function renderCharts(recs) {
+  const metric = document.getElementById('ymetric').value;
+  const yLabel = metric === 'unit' ? '㎡単価' : '総額';
+  const yFmt = metric === 'unit'
+    ? v => Math.round(v / 1e4).toLocaleString() + '万'
+    : v => (v >= 1e8 ? (v / 1e8).toFixed(1) + '億' : Math.round(v / 1e4).toLocaleString() + '万');
+  const title = r => `${r.pitName} ／ ${fmtMan(r.total)} ／ ${fmtPerSqm(r.unit)}${r.walk != null ? ' ／ 徒歩' + r.walk + '分' : ''}`;
 
-    const rosenkaHint = perSqm != null
-      ? `<div class="pp-meta">相続税路線価の目安 ≒ ${fmtPerSqm(perSqm * 0.8)}（取引相場の8割を仮置き）</div>` : '';
+  // 取引年次 × 価格
+  const tPts = recs.filter(r => r.pit && yValOf(r, metric) != null)
+    .map(r => ({ x: r.pit.y + (r.pit.q - 0.5) / 4, y: yValOf(r, metric), title: title(r) }));
+  document.getElementById('chartTime').innerHTML =
+    scatterSVG(tPts, { xType: 'year', xLabel: '取引年次', yLabel, yFmt });
 
-    m.bindPopup(
-      `<div class="pp-price">${p.u_transaction_price_total_ja || '価格非公開'}</div>` +
-      (perSqm != null ? `<div class="pp-unit">${fmtPerSqm(perSqm)}${isLandOnly ? '（土地）' : '（土地+建物）'}</div>` : '') +
-      `<div class="pp-row">${p.land_type_name_ja || ''} ／ 面積 ${p.u_area_ja || '—'}</div>` +
-      (p.u_land_frontage_ja ? `<div class="pp-row">間口 ${p.u_land_frontage_ja}${p.u_front_road_width_ja ? ' ／ 前面道路 ' + p.u_front_road_width_ja : ''}</div>` : '') +
-      (p.land_use_name_ja ? `<div class="pp-row">用途地域 ${p.land_use_name_ja}${p.u_building_coverage_ratio_ja ? ' ／ 建ぺい ' + p.u_building_coverage_ratio_ja : ''}${p.u_floor_area_ratio_ja ? ' ／ 容積 ' + p.u_floor_area_ratio_ja : ''}</div>` : '') +
-      `<div class="pp-meta">${p.prefecture_name_ja || ''}${p.city_name_ja || ''}${p.district_name_ja || ''} ／ ${p.point_in_time_name_ja || ''} ／ ${p.price_information_category_name_ja || ''}</div>` +
-      rosenkaHint
-    );
-    m.addTo(layer);
+  // 駅徒歩(分) × 価格
+  const hasWalk = recs.some(r => r.walk != null);
+  const wPts = recs.filter(r => r.walk != null && yValOf(r, metric) != null)
+    .map(r => ({ x: r.walk, y: yValOf(r, metric), title: title(r) }));
+  document.getElementById('chartWalk').innerHTML = hasWalk
+    ? scatterSVG(wPts, { xType: 'num', xLabel: '駅徒歩（分）', yLabel, yFmt, xFmt: v => String(Math.round(v)) })
+    : '<div class="note">このAPIレスポンスには「駅徒歩分数」が含まれていないため、表示できません。表の「徒歩(分)」列も「—」になります。</div>';
+}
+
+function niceMax(m) {
+  if (!(m > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(m))), n = m / p;
+  const s = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+  return s * p;
+}
+function niceTicks(min, max, n) {
+  const span = (max - min) || 1, step0 = span / n, p = Math.pow(10, Math.floor(Math.log10(step0))), c = step0 / p;
+  const s = c <= 1 ? 1 : c <= 2 ? 2 : c <= 2.5 ? 2.5 : c <= 5 ? 5 : 10, step = s * p;
+  const out = []; for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) out.push(v); return out;
+}
+function scatterSVG(pts, o) {
+  if (!pts.length) return '<div class="empty">該当データがありません</div>';
+  const W = 600, H = 340, P = { l: 64, r: 16, t: 12, b: 38 };
+  let xmin = Math.min(...pts.map(p => p.x)), xmax = Math.max(...pts.map(p => p.x));
+  const ymax = niceMax(Math.max(...pts.map(p => p.y)));
+  if (o.xType === 'num') { xmin = 0; xmax = niceMax(xmax); }
+  else { const padx = Math.max(0.12, (xmax - xmin) * 0.05); xmin -= padx; xmax += padx; }
+  if (xmax === xmin) xmax = xmin + 1;
+  const sx = x => P.l + (x - xmin) / (xmax - xmin) * (W - P.l - P.r);
+  const sy = y => H - P.b - (y / ymax) * (H - P.t - P.b);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.xLabel)}と価格の散布図">`;
+  for (let i = 0; i <= 5; i++) {
+    const yv = ymax * i / 5, yy = sy(yv);
+    s += `<line class="grid" x1="${P.l}" y1="${yy.toFixed(1)}" x2="${W - P.r}" y2="${yy.toFixed(1)}"/>`;
+    s += `<text class="tick" x="${P.l - 6}" y="${(yy + 3).toFixed(1)}" text-anchor="end">${esc(o.yFmt(yv))}</text>`;
+  }
+  let xt;
+  if (o.xType === 'year') {
+    xt = []; for (let y = Math.ceil(xmin); y <= Math.floor(xmax); y++) xt.push({ v: y, label: String(y) });
+    if (!xt.length) xt = [{ v: (xmin + xmax) / 2, label: String(Math.floor((xmin + xmax) / 2)) }];
+  } else {
+    xt = niceTicks(0, xmax, 5).map(v => ({ v, label: o.xFmt ? o.xFmt(v) : String(v) }));
+  }
+  xt.forEach(t => {
+    const xx = sx(t.v); if (xx < P.l - 1 || xx > W - P.r + 1) return;
+    s += `<line class="axis" x1="${xx.toFixed(1)}" y1="${H - P.b}" x2="${xx.toFixed(1)}" y2="${H - P.b + 4}"/>`;
+    s += `<text class="tick" x="${xx.toFixed(1)}" y="${H - P.b + 16}" text-anchor="middle">${esc(t.label)}</text>`;
   });
-  updateExtLinks();
+  s += `<line class="axis" x1="${P.l}" y1="${P.t}" x2="${P.l}" y2="${H - P.b}"/>`;
+  s += `<line class="axis" x1="${P.l}" y1="${H - P.b}" x2="${W - P.r}" y2="${H - P.b}"/>`;
+  const midY = ((P.t + (H - P.b)) / 2).toFixed(1);
+  s += `<text class="tick" x="${((P.l + (W - P.r)) / 2).toFixed(1)}" y="${H - 4}" text-anchor="middle">${esc(o.xLabel)}</text>`;
+  s += `<text class="tick" x="13" y="${midY}" text-anchor="middle" transform="rotate(-90 13 ${midY})">${esc(o.yLabel)}</text>`;
+  pts.forEach(p => { s += `<circle class="dot" cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="4"><title>${esc(p.title)}</title></circle>`; });
+  return s + '</svg>';
+}
+
+/* ---- 表 ---- */
+const COLS = [
+  { h: '取引時期', l: true,  v: r => r.pitName || '—' },
+  { h: '㎡単価',   l: false, v: r => fmtPerSqm(r.unit) },
+  { h: '総額',     l: false, v: r => fmtMan(r.total) },
+  { h: '面積',     l: false, v: r => r.area != null ? r.area.toLocaleString() + '㎡' : (r.p.u_area_ja || '—') },
+  { h: '間口',     l: false, v: r => r.frontage || '—' },
+  { h: '前面道路', l: false, v: r => r.road || '—' },
+  { h: '用途地域', l: true,  v: r => r.use || '—' },
+  { h: '建ぺい/容積', l: false, v: r => (r.bcr || '—') + ' / ' + (r.far || '—') },
+  { h: '最寄駅',   l: true,  v: r => r.station || '—' },
+  { h: '徒歩(分)', l: false, v: r => r.walk != null ? r.walk : '—' },
+  { h: '市区町村', l: true,  v: r => r.city || '—' },
+  { h: '地区',     l: true,  v: r => r.dist || '—' }
+];
+function renderTable(recs) {
+  const tbl = document.getElementById('tbl');
+  const thead = tbl.querySelector('thead'), tbody = tbl.querySelector('tbody');
+  thead.innerHTML = '';
+  const tr = document.createElement('tr');
+  COLS.forEach(c => { const th = document.createElement('th'); th.textContent = c.h; if (c.l) th.className = 'l'; tr.appendChild(th); });
+  thead.appendChild(tr);
+  tbody.innerHTML = '';
+  if (!recs.length) {
+    const td = document.createElement('td'); td.colSpan = COLS.length; td.className = 'empty'; td.textContent = '該当する取引がありません';
+    const r = document.createElement('tr'); r.appendChild(td); tbody.appendChild(r); return;
+  }
+  const frag = document.createDocumentFragment();
+  recs.forEach(rec => {
+    const r = document.createElement('tr');
+    COLS.forEach(c => { const td = document.createElement('td'); td.textContent = c.v(rec); if (c.l) td.className = 'l'; r.appendChild(td); });
+    frag.appendChild(r);
+  });
+  tbody.appendChild(frag);
 }
 
 /* ---- 外部リンク（正確な路線価が要るとき用） ---- */
-function updateExtLinks() {
-  const c = map.getCenter();
-  const el = document.getElementById('ext-links');
-  el.innerHTML =
-    `<a href="https://www.rosenka.nta.go.jp/" target="_blank" rel="noopener">国税庁 路線価図</a> ／ ` +
-    `<a href="https://www.chikamap.jp/chikamap-sp/" target="_blank" rel="noopener">全国地価マップ(SP)</a> ／ ` +
-    `<a href="https://maps.google.com/?q=${c.lat.toFixed(6)},${c.lng.toFixed(6)}" target="_blank" rel="noopener">Googleマップ</a>`;
+function renderLinks() {
+  const el = document.getElementById('extlinks');
+  const c = CENTER || { lat: 35.68, lng: 139.76 };
+  el.innerHTML = `正確な路線価/地価は → `
+    + `<a href="https://www.rosenka.nta.go.jp/" target="_blank" rel="noopener">国税庁 路線価図</a> ／ `
+    + `<a href="https://www.chikamap.jp/chikamap-sp/" target="_blank" rel="noopener">全国地価マップ</a> ／ `
+    + `<a href="https://maps.google.com/?q=${c.lat.toFixed(6)},${c.lng.toFixed(6)}" target="_blank" rel="noopener">Googleマップ</a>`
+    + ` ｜ 取引価格：国土交通省 不動産情報ライブラリ`;
 }
 
-/* ---- 住所→緯度経度（国土地理院ジオコーダ：CORS可・キー不要） ---- */
+/* ---- 住所/駅名 → 緯度経度（地理院ジオコーダ：CORS可・キー不要） ---- */
 async function geocode(q) {
   const url = 'https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(q);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('geocode');
-  const arr = await res.json();
-  if (!arr.length) return null;
-  const [lng, lat] = arr[0].geometry.coordinates; // [lng, lat]
-  return { lat, lng, title: arr[0].properties && arr[0].properties.title };
+  const res = await fetch(url); if (!res.ok) throw new Error('geocode');
+  const arr = await res.json(); if (!arr.length) return null;
+  const [lng, lat] = arr[0].geometry.coordinates; return { lat, lng };
 }
-async function searchAddress(q, zoom) {
+async function search(q) {
   if (!q) return;
+  toast('住所/駅を検索中…', 0);
   try {
     const hit = await geocode(q);
-    if (!hit) { toast('住所が見つかりませんでした'); return; }
-    map.setView([hit.lat, hit.lng], zoom || Math.max(map.getZoom(), 15));
-  } catch (e) { toast('住所検索に失敗しました'); }
+    if (!hit) { toast('住所・駅名が見つかりませんでした'); return; }
+    await loadAround(hit.lat, hit.lng);
+  } catch (e) { toast('検索に失敗しました'); }
 }
 
 /* ---- イベント ---- */
-document.getElementById('go').addEventListener('click', () => searchAddress(document.getElementById('q').value));
-document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') searchAddress(e.target.value); });
+document.getElementById('go').addEventListener('click', () => search(document.getElementById('q').value.trim()));
+document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') search(e.target.value.trim()); });
+document.getElementById('station').addEventListener('change', render);
+document.getElementById('ymetric').addEventListener('change', render);
 
-let moveTimer = null;
-map.on('moveend', () => { clearTimeout(moveTimer); moveTimer = setTimeout(refresh, 350); });
-
-/* ---- URLパラメータでディープリンク：?q=住所  または ?lat=&lng=&z= ---- */
-(function initFromURL() {
+/* ---- ディープリンク：?q=駅名 もしくは ?lat=&lng= ---- */
+(function init() {
   const u = new URLSearchParams(location.search);
-  const q = u.get('q');
-  const lat = parseFloat(u.get('lat')), lng = parseFloat(u.get('lng'));
-  const z = parseInt(u.get('z'), 10);
-  if (!isNaN(lat) && !isNaN(lng)) {
-    map.setView([lat, lng], isNaN(z) ? 15 : z);
-  } else if (q) {
-    document.getElementById('q').value = q;
-    searchAddress(q, isNaN(z) ? 15 : z);
-  } else {
-    updateExtLinks();
-    refresh();
-  }
+  const q = u.get('q'); const lat = parseFloat(u.get('lat')), lng = parseFloat(u.get('lng'));
+  if (!isNaN(lat) && !isNaN(lng)) loadAround(lat, lng);
+  else if (q) { document.getElementById('q').value = q; search(q); }
 })();
 </script>
 </body>
