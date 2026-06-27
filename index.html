@@ -55,8 +55,8 @@
   <div id="toast"></div>
   <div id="legend">
     <div><b>取引価格（不動産情報ライブラリ）</b></div>
-    <div><span class="swatch" style="background:#c0392b"></span>宅地（土地）<span class="swatch" style="background:#2980b9;margin-left:8px"></span>土地＋建物</div>
-    <div class="pp-meta">点は<b>最寄り駅</b>に集約表示。相続税路線価そのものではなく相場の当たり付け用。</div>
+    <div><span class="swatch" style="background:#c0392b"></span>宅地（土地）の取引</div>
+    <div class="pp-meta">点は番地ではなく<b>代表点（駅/地区）</b>に丸めて表示。重なり回避で微小に散らしています。相続税路線価そのものではなく相場の当たり付け用。</div>
     <div class="pp-links ctl-link" id="ext-links"></div>
   </div>
 
@@ -77,7 +77,7 @@ const CONFIG = {
   PROXY:   "https://script.google.com/macros/s/AKfycbyY2UDv57wz6oizMPnNazQvTuMMBp0FyZt81ak8RCqOGXpOlqpacXF7IwimJN8T5g1W/exec?url=", // GASプロキシ（キーはGAS内）
   FROM:    "20231",            // 取引時期From  YYYYN（N=四半期1〜4）
   TO:      "20264",            // 取引時期To
-  LAND_TYPES: "01,02",         // 01=宅地(土地) 02=宅地(土地と建物) 07=中古マンション 10=農地 11=林地
+  LAND_TYPES: "01",            // 01=宅地(土地)のみ。02=宅地(土地と建物) 07=中古マンション 10=農地 11=林地
   DEFAULT_CENTER: [35.6586, 139.7454], // 初期位置（東京タワー付近）
   DEFAULT_ZOOM: 14,
   DATA_MIN_ZOOM: 13,           // この地図ズーム未満では取引点を取りに行かない（広域すぎ防止）
